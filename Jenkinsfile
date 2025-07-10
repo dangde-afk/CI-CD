@@ -2,15 +2,17 @@ pipeline {
     agent any
 
     environment {
-        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17" // Đường dẫn JDK 17
+        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
         PATH = "${env.JAVA_HOME}\\bin;${env.PATH}"
         BUILD_DIR = "target"
-        DEPLOY_JAR = "target\\springbootapp.jar"  // Tên jar của bạn
-        DEPLOY_DIR = "C:\\wwwroot\\springboot"
+        JAR_FILE = "target\\springbootapp.jar"
+        IMAGE_NAME = "my-springboot-app"
+        CONTAINER_NAME = "springboot-container"
+        DOCKERFILE_DIR = "."  // thư mục chứa Dockerfile
+        PORT = "8080"
     }
 
     stages {
-
         stage('Clone') {
             steps {
                 echo '📥 Cloning repository...'
@@ -32,42 +34,30 @@ pipeline {
             }
         }
 
-        stage('Publish') {
+        stage('Build Docker Image') {
             steps {
-                echo '📦 Publishing artifact...'
-                // Copy JAR sang thư mục publish
+                echo '🐳 Building Docker image...'
                 bat """
-                    if not exist ${DEPLOY_DIR} mkdir ${DEPLOY_DIR}
-                    copy ${DEPLOY_JAR} ${DEPLOY_DIR}\\app.jar /Y
+                    docker build -t ${IMAGE_NAME} ${DOCKERFILE_DIR}
                 """
             }
         }
 
-        stage('Deploy to IIS') {
+        stage('Run Docker Container') {
             steps {
-                echo '🚀 Deploying...'
-                bat '''
-                    iisreset /stop
-                    taskkill /F /IM java.exe || echo Java not running
-                '''
-                
-                // Dùng PowerShell tạo IIS site nếu chưa có
-                powershell '''
-                    Import-Module WebAdministration
-                    if (-not (Test-Path IIS:\\Sites\\SpringApp)) {
-                        New-Website -Name "SpringApp" -Port 8080 -PhysicalPath "C:\\wwwroot\\springboot"
-                    }
-                '''
-
-                // Chạy ứng dụng Spring Boot trong background
-                bat 'start /B java -jar C:\\wwwroot\\springboot\\app.jar'
+                echo '🚀 Running container...'
+                bat """
+                    docker stop ${CONTAINER_NAME} || echo Not running
+                    docker rm ${CONTAINER_NAME} || echo Not exist
+                    docker run -d -p ${PORT}:${PORT} --name ${CONTAINER_NAME} ${IMAGE_NAME}
+                """
             }
         }
 
-        stage('Open website') {
+        stage('Open Website') {
             steps {
                 echo '🌐 Opening browser...'
-                bat 'start http://localhost:8080/'
+                bat "start http://localhost:${PORT}"
             }
         }
     }
